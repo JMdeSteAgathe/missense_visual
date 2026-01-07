@@ -1,4 +1,4 @@
-# Gene Variant Pathogenicity Dashboard
+# missense-visual
 
 Compare your variant to gnomad and clinvar before applying your PP3 criteria (or discarding it):
 
