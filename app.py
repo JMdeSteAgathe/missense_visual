@@ -133,7 +133,16 @@ info_string = ";".join(info_parts)
 # --- 3. Assemble Final VCF Row ---
 vcf_row = "\t".join(map(str, [chrom, pos, rsid, ref, alt, qual, filter_col, info_string]))
 
-VCF_ROW_STRING = vcf_row  # Custom variant, already defined above
+VCF_ROW_STRING = vcf_row
+vcf_string = data['vcf_string'] # define vcf-string, to be displayed in the legend
+
+# get the date of the clinvar vcf file, as written in the header, to be displayed in the legend
+import gzip
+with gzip.open(CLINVAR_VCF, 'rt') as f:
+    for line in f:
+        if line.startswith('##fileDate='):
+            clinvar_date = line.strip().split('=')[1]
+            break
 
 # Initialize the Dash app
 app = dash.Dash(__name__)
@@ -381,11 +390,11 @@ app.layout = html.Div([
         html.H3("Legend:", style={'marginTop': 5}),
         html.Ul([
             html.Li([html.Span("★", style={'color': 'purple', 'fontSize': '20px'}), 
-                    " Custom Variant (your query variant) - always displayed"]),
+                    " Your Variant: (hg38) "+ vcf_string]),
             html.Li([html.Span("◆", style={'color': 'darkred', 'fontSize': '20px'}), 
-                    " ClinVar P/LP Variants - always displayed"]),
+                    " ClinVar P/LP Variants (date: " + clinvar_date + ")"]),
             html.Li([html.Span("●", style={'color': '#17BECF', 'fontSize': '20px'}), 
-                    " gnomAD Variants - filtered by threshold above"])
+                    " gnomADv4.1 Variants"])
         ])
     ], style={'marginTop': 5, 'padding': '10px', 'backgroundColor': '#f9f9f9', 
               'borderRadius': '5px'})
