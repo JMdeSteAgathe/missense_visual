@@ -8,17 +8,22 @@ import numpy as np
 
 import requests, sys
 import json
-TARGET_GENE = "MYH10"
-variant = "NM_005964.5(MYH10):c.464A>G"
+import requests
+import sys
+import json
+
+TARGET_GENE = "SCN1A"
+variant = "NM_001165963.4(SCN1A):c.1060G>C"
 
 server = "https://rest.ensembl.org"
-ext = "/vep/human/hgvs/" + variant +"?mane=1&canonical=1&REVEL=1&AlphaMissense=1&CADD=1&vcf_string=1"
- 
-r = requests.get(server+ext, headers={ "Content-Type" : "application/json"})
- 
+# Added fields parameter to ensure we get gene_symbol for all transcripts
+ext = "/vep/human/hgvs/" + variant + "?mane=1&canonical=1&REVEL=1&AlphaMissense=1&CADD=1&vcf_string=1&fields=transcript_consequences"
+
+r = requests.get(server + ext, headers={"Content-Type": "application/json"})
+
 if not r.ok:
-  r.raise_for_status()
-  sys.exit()
+    r.raise_for_status()
+    sys.exit()
 
 decoded = r.json()
 
@@ -33,10 +38,9 @@ if data.get('vcf_string'):
     chrom, pos, ref, alt = data['vcf_string'].split('-')
 else:
     # Fallback if vcf_string is not present in the API response.
-    # Setting to None is a safe default to indicate missing data.
     print("Warning: 'vcf_string' not found in the API result. Unable to determine REF/ALT.")
     ref, alt = None, None
-    
+
 qual = '.'
 filter_col = '.'
 
@@ -47,29 +51,23 @@ info_parts = []
 bcsq_entries = []
 genomic_change = f"{pos}{ref}>{alt}"
 
-for tc in data['transcript_consequences']:
+for tc in data.get('transcript_consequences', []):
     gene = tc.get('gene_symbol', '.')
     transcript_id = tc.get('transcript_id', '.')
     biotype = tc.get('biotype', '.')
-    
-    # Determine if consequence is protein-altering by checking for 'amino_acids'
+
     is_protein_altering = 'amino_acids' in tc
 
     for term in tc.get('consequence_terms', []):
         base_entry = f"{term}|{gene}|{transcript_id}|{biotype}"
-        # replace all the "missense_variant" with "missense"
         if term == "missense_variant":
             base_entry = f"missense|{gene}|{transcript_id}|{biotype}"
-        
-        # Mimic the example's format: add extra fields for protein-altering terms
+
         if is_protein_altering:
             strand = '+' if tc.get('strand') == 1 else '-'
-            
-            # Format protein change like the example: 206S>206N
             aa_pos = tc.get('protein_start')
             ref_aa, alt_aa = tc.get('amino_acids', '/').split('/')
             protein_change = f"{aa_pos}{ref_aa}>{aa_pos}{alt_aa}"
-
             full_entry = f"{base_entry}|{strand}|{protein_change}|{genomic_change}"
             bcsq_entries.append(full_entry)
         else:
@@ -77,22 +75,58 @@ for tc in data['transcript_consequences']:
 
 if bcsq_entries:
     info_parts.append("BCSQ=" + ",".join(bcsq_entries))
+
+# b) Add other scores using smarter logic
+
+def get_best_score(transcript_consequences, score_key, target_gene):
+    """
+    Finds the best score from a list of transcript consequences.
     
-# b) Add other scores from the canonical transcript
-canonical_tc = next((tc for tc in data['transcript_consequences'] if tc.get('canonical') == 1), None)
+    Logic:
+    1. Collect all available scores for the given score_key.
+    2. If there's only one unique score value, return it.
+    3. If there are multiple, return the one associated with the target_gene.
+    4. If none are found, or none match the target gene in a conflict, return None.
+    """
+    scores_with_genes = []
+    for tc in transcript_consequences:
+        if score_key in tc:
+            scores_with_genes.append({
+                'gene': tc.get('gene_symbol'),
+                'score': tc[score_key]
+            })
 
-# If no canonical found, fall back to the first transcript with scores
-if not canonical_tc:
-    canonical_tc = next((tc for tc in data['transcript_consequences'] if 'cadd_phred' in tc), data['transcript_consequences'][0])
+    if not scores_with_genes:
+        return None
 
-if 'cadd_phred' in canonical_tc:
-    info_parts.append(f"cadd_v1.7={canonical_tc['cadd_phred']}")
-if 'revel' in canonical_tc:
-    info_parts.append(f"REVEL={canonical_tc['revel']}")
-if 'alphamissense' in canonical_tc:
-    am = canonical_tc['alphamissense']
-    info_parts.append(f"am_pathogenicity={am['am_pathogenicity']}")
-    info_parts.append(f"am_class={am['am_class']}")
+    # Use a string representation for uniqueness check, handles dicts like AlphaMissense
+    unique_scores_str = {json.dumps(s['score']) for s in scores_with_genes}
+
+    if len(unique_scores_str) == 1:
+        return scores_with_genes[0]['score']
+    else:
+        # Conflict: multiple different scores exist. Prioritize the target gene.
+        for item in scores_with_genes:
+            if item['gene'] == target_gene:
+                return item['score']
+    
+    # Fallback if multiple scores exist but none match the target gene
+    return None
+
+all_tcs = data.get('transcript_consequences', [])
+
+cadd_score = get_best_score(all_tcs, 'cadd_phred', TARGET_GENE)
+if cadd_score is not None:
+    info_parts.append(f"cadd_v1.7={cadd_score}")
+
+revel_score = get_best_score(all_tcs, 'revel', TARGET_GENE)
+if revel_score is not None:
+    info_parts.append(f"REVEL={revel_score}")
+
+am_score = get_best_score(all_tcs, 'alphamissense', TARGET_GENE)
+if am_score is not None:
+    info_parts.append(f"am_pathogenicity={am_score.get('am_pathogenicity', '.')}")
+    info_parts.append(f"am_class={am_score.get('am_class', '.')}")
 
 info_string = ";".join(info_parts)
 
@@ -299,7 +333,7 @@ app.layout = html.Div([
                     {'label': 'REVEL', 'value': 'REVEL'},
                     {'label': 'AlphaMissense', 'value': 'am_pathogenicity'},
                     {'label': 'CADD v1.7', 'value': 'cadd_v1.7'},
-                    {'label': 'MPC', 'value': 'MPC'}
+                    {'label': 'MPC2', 'value': 'MPC'}
                 ],
                 value='REVEL',
                 style={'width': '100%'}
@@ -311,9 +345,9 @@ app.layout = html.Div([
             dcc.Dropdown(
                 id='threshold-field-dropdown',
                 options=[
-                    {'label': 'AC (Allele Count - Het+Hom)', 'value': 'AC_joint'},
-                    {'label': 'AC Genomes', 'value': 'AC_genomes'},
-                    {'label': 'Homozygous Count (Joint)', 'value': 'nhomalt_joint'},
+                    {'label': 'Allele Count (Exomes + Genomes)', 'value': 'AC_joint'},
+                    {'label': 'Allele Count (Genomes)', 'value': 'AC_genomes'},
+                    {'label': 'Homozygous Count (Exomes + Genomes)', 'value': 'nhomalt_joint'},
                     {'label': 'Homozygous Count (Genomes)', 'value': 'nhomalt_genomes'}
                 ],
                 value='AC_genomes',
