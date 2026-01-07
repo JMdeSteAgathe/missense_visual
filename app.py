@@ -467,12 +467,18 @@ def update_plot(transcript, score, threshold_field, threshold_value):
                         title=f"log10({threshold_field})",
                         x=1.15
                     ),
-                    line=dict(width=1, color='DarkSlateGray')
+                    line=dict(width=1, color='LightGray')
                 ),
                 text=create_hover_text(gnomad_filtered, score),
                 hoverinfo='text',
                 hovertemplate='%{text}<extra></extra>'
             ))
+            fig.update_traces(
+                marker_colorbar=dict(
+                    tickvals=np.log10([1, 10, 100, 1000, 10000]),
+                    ticktext=['1', '10', '100', '1000', '10000']
+                            )
+            )
             info_parts.append(f"{len(gnomad_filtered)} gnomAD variants (filtered: {threshold_field} > {threshold_val})")
         else:
             info_parts.append(f"No gnomAD variants with {threshold_field} > {threshold_val}")
