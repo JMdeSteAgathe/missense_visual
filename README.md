@@ -1,7 +1,9 @@
 # Gene Variant Pathogenicity Dashboard
 
-Compare your variant to gnomad and clinvar before applying your PP3 criteria (or discarding it).
-<img width="626" height="767" alt="image" src="https://github.com/user-attachments/assets/9a345dfa-c6ce-4b48-be34-2436d77a6cda" />
+Compare your variant to gnomad and clinvar before applying your PP3 criteria (or discarding it):
+
+<img width="690" height="778" alt="image" src="https://github.com/user-attachments/assets/d1175cde-ff48-4469-b47f-abdd1d574994" />
+
 
 
 
@@ -17,4 +19,13 @@ it is only displayed for gnomad and clinvar variants.
 - Download the gnomad vcf.gz.tbi
 - Download the app.py script
 
-## usage
+## Usage
+Replace the gene and variant by your gene and your variant
+```
+TARGET_GENE = "SCN1A"
+variant = "NM_001165963.4(SCN1A):c.1060G>C"
+```
+
+## Known Bugs
+- hovering a clinvar or custom variant displays always empty (0) gnomad values, which is often incorrect
+- 
