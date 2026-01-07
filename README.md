@@ -1,8 +1,9 @@
 # Gene Variant Pathogenicity Dashboard
 
-This Dash app queries the Ensembl REST API for a variant,
-parses gene and VCF data, and visualizes missense variant scores
-from gnomAD and ClinVar.
+Compare your variant to gnomad and clinvar before applying your PP3 criteria (or discarding it).
+<img width="626" height="767" alt="image" src="https://github.com/user-attachments/assets/9a345dfa-c6ce-4b48-be34-2436d77a6cda" />
+
+
 
 Currently, only `REVEL`, `AlphaMissense` and `CADDv1.7` are available.
 
