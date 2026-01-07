@@ -14,6 +14,16 @@ import json
 
 TARGET_GENE = "SCN1A"
 variant = "NM_001165963.4(SCN1A):c.1060G>C"
+VCF_FILE = "/path/to/gnomad_ms.BCSQ.PASS.REVEL.am.mpc2.nochr.cadd.vcf.gz"
+CLINVAR_VCF = "/path/to/clinvar_plp_ms.BCSQ.cadd.revel.am.mpc2.nochr.vcf.gz"
+GENE_COORD = "/Users/jedesain/Documents/missense/gene_coord.csv.gz"
+
+# first, the gene coordinates
+gene_coord = pd.read_csv(GENE_COORD, compression='gzip')
+conv_chroms = [str(i) for i in range(1, 23)] + ['X', 'Y', 'MT']
+
+# Now filter only those rows that have a non conventional chromosome
+gene_coord = gene_coord[gene_coord['Chromosome/scaffold name'].isin(conv_chroms)]
 
 server = "https://rest.ensembl.org"
 # Added fields parameter to ensure we get gene_symbol for all transcripts
