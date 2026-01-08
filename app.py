@@ -399,7 +399,7 @@ app.layout = html.Div([
     html.Div([
         html.H3("Legend:", style={'marginTop': 5}),
         html.Ul([
-            html.Li([html.Span("★", style={'color': 'purple', 'fontSize': '20px'}), 
+            html.Li([html.Span("★", style={'color': 'gold', 'fontSize': '20px'}), 
                     " Your Variant: (hg38) "+ vcf_string]),
             html.Li([html.Span("◆", style={'color': 'darkred', 'fontSize': '20px'}), 
                     " ClinVar P/LP Variants (date: " + clinvar_date + ")"]),
@@ -548,7 +548,7 @@ def update_plot(transcript, score, threshold_field, threshold_value):
                     mode='markers',
                     name='Custom Variant',
                     marker=dict(
-                        color='purple',
+                        color='gold',
                         size=16,
                         symbol='star'
                     ),
@@ -564,8 +564,7 @@ def update_plot(transcript, score, threshold_field, threshold_value):
     # Update layout
     fig.update_layout(
         title=dict(
-            text=f"<b>{TARGET_GENE} Missense Variants - Pathogenicity Comparison</b><br>"
-                 f"<sub>Transcript: {transcript} | Score: {score}</sub>",
+            text=f"<b>{TARGET_GENE} Missense Variants - Score: {score}</b><br>",
             x=0.5,
             xanchor='center'
         ),
