@@ -330,7 +330,7 @@ else:
 
 # App layout
 app.layout = html.Div([
-    html.H1(f"{TARGET_GENE} Variant Pathogenicity Analysis", 
+    html.H1(f"missense-visual of {TARGET_GENE}", 
             style={'textAlign': 'center', 'marginBottom': 30}),
     
     html.Div([
