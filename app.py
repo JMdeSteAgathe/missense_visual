@@ -235,7 +235,11 @@ def parse_variant_record(variant, gene_symbol, source_type="vcf"):
             'REVEL': info_dict.get('REVEL'),
             'am_pathogenicity': info_dict.get('am_pathogenicity'),
             'cadd_v1.7': info_dict.get('cadd_v1.7'),
-            'MPC': info_dict.get('MPC')
+            'MPC': info_dict.get('MPC'),
+            # === NEW SCORES ADDED ===
+            'MISTIC_score': info_dict.get('MISTIC_score'),
+            'MISTIC_pred': info_dict.get('MISTIC_pred'),
+            'popEVE': info_dict.get('popEVE')
         }
         parsed_variants.append(variant_data)
     
@@ -352,7 +356,10 @@ app.layout = html.Div([
                     {'label': 'REVEL', 'value': 'REVEL'},
                     {'label': 'AlphaMissense', 'value': 'am_pathogenicity'},
                     {'label': 'CADD v1.7', 'value': 'cadd_v1.7'},
-                    {'label': 'MPC2', 'value': 'MPC'}
+                    {'label': 'MPC2', 'value': 'MPC'},
+                    # === NEW SCORES ADDED TO DROPDOWN ===
+                    {'label': 'MISTIC', 'value': 'MISTIC_score'},
+                    {'label': 'popEVE', 'value': 'popEVE'}
                 ],
                 value='REVEL',
                 style={'width': '100%'}
@@ -418,12 +425,19 @@ def create_hover_text(df, score_column):
         score_val = row.get(score_column)
         score_str = f"{float(score_val):.3f}" if pd.notna(score_val) else 'N/A'
         
+        # === ENHANCED HOVER TEXT FOR NEW SCORES ===
         text = (
-            f"<b>Position:</b> {row.get('aa_position', 'N/A')}<br>"
             f"<b>Change:</b> {row.get('aa_change', 'N/A')}<br>"
             f"<b>Variant:</b> {row.get('chrom', '')}:{row.get('pos', '')} "
             f"{row.get('ref', '')}>{row.get('alt', '')}<br>"
             f"<b>{score_column}:</b> {score_str}<br>"
+        )
+        
+        # Add MISTIC prediction if available and relevant
+        if 'MISTIC_pred' in row and pd.notna(row.get('MISTIC_pred')) and score_column == 'MISTIC_score':
+            text += f"<b>MISTIC_pred:</b> {row['MISTIC_pred']}<br>"
+        
+        text += (
             f"<b>AC_genomes:</b> {row.get('AC_genomes', 0)}<br>"
             f"<b>AC_joint:</b> {row.get('AC_joint', 0)}<br>"
             f"<b>nhomalt_genomes:</b> {row.get('nhomalt_genomes', 0)}<br>"
@@ -483,8 +497,9 @@ def update_plot(transcript, score, threshold_field, threshold_value):
                     colorscale='GnBu',
                     showscale=True,
                     colorbar=dict(
-                        title=f"log10({threshold_field})",
-                        x=1.15
+                        title=f"{threshold_field}",
+                        x=1,
+                        thickness=12
                     ),
                     line=dict(width=1, color='LightGray')
                 ),
@@ -496,8 +511,8 @@ def update_plot(transcript, score, threshold_field, threshold_value):
                 marker_colorbar=dict(
                     tickvals=np.log10([1, 10, 100, 1000, 10000]),
                     ticktext=['1', '10', '100', '1000', '10000']
-                            )
             )
+    )
             info_parts.append(f"{len(gnomad_filtered)} gnomAD variants (filtered: {threshold_field} > {threshold_val})")
         else:
             info_parts.append(f"No gnomAD variants with {threshold_field} > {threshold_val}")
@@ -520,9 +535,10 @@ def update_plot(transcript, score, threshold_field, threshold_value):
                     mode='markers',
                     name='ClinVar P/LP',
                     marker=dict(
-                        color='darkred',
-                        size=12,
-                        symbol='diamond'
+                        color='darkred', 
+                        size=7,
+                        symbol='diamond',
+                        opacity=0.7 # make them a little transparent
                     ),
                     text=create_hover_text(clinvar_filtered, score),
                     hoverinfo='text',
@@ -550,7 +566,8 @@ def update_plot(transcript, score, threshold_field, threshold_value):
                     marker=dict(
                         color='gold',
                         size=16,
-                        symbol='star'
+                        symbol='star',
+                        line=dict(width=1, color='white')
                     ),
                     text=create_hover_text(custom_filtered, score),
                     hoverinfo='text',
@@ -563,11 +580,11 @@ def update_plot(transcript, score, threshold_field, threshold_value):
     
     # Update layout
     fig.update_layout(
-        title=dict(
-            text=f"<b>{TARGET_GENE} Missense Variants - Score: {score}</b><br>",
-            x=0.5,
-            xanchor='center'
-        ),
+#        title=dict(
+#            text=f"<b>{TARGET_GENE} Missense Variants - {transcript} | Score: {score}</b><br>",
+#            x=0.5,
+#            xanchor='center'
+#        ),
         xaxis=dict(
             title="<b>Amino Acid Position</b>",
             gridcolor='lightgray'
@@ -581,7 +598,7 @@ def update_plot(transcript, score, threshold_field, threshold_value):
         height=600,
         showlegend=False,
         font=dict(size=12),
-        margin=dict(r=150)  # Extra margin for colorbar
+#        margin=dict(r=150)  # Extra margin for colorbar
     )
     
     fig.update_xaxes(showgrid=True, zeroline=False)
