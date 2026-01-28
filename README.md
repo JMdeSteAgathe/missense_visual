@@ -16,9 +16,9 @@ it is only displayed for gnomad and clinvar variants.
 
 ## Setup
 
-- Download the /Users/jedesain/Documents/missense/clinvar_plp_ms.fully_annotated.vcf.gz and its csi
-- Download the gnomad vcf.gz (1.3G) drive link here: [https://1drv.ms/u/c/0c297c45bbbdee7e/IQDlnodDmGNTRq2kMQJ0AE0PAdXzhM5P4HHX8HtbZmxx8hc?e=TBADcU](https://1drv.ms/u/c/0c297c45bbbdee7e/IQDlnodDmGNTRq2kMQJ0AE0PAdXzhM5P4HHX8HtbZmxx8hc?e=TBADcU)
-- Download the index /Users/jedesain/Documents/missense/gnomad_ms.fully_annotated.vcf.gz.csi
+- Download the preannotated clinvar_plp_ms.fully_annotated.vcf.gz and its csi
+- Download the gnomad preannotated vcf.gz (1.3G) drive link here: [https://1drv.ms/u/c/0c297c45bbbdee7e/IQDlnodDmGNTRq2kMQJ0AE0PAdXzhM5P4HHX8HtbZmxx8hc?e=TBADcU](https://1drv.ms/u/c/0c297c45bbbdee7e/IQDlnodDmGNTRq2kMQJ0AE0PAdXzhM5P4HHX8HtbZmxx8hc?e=TBADcU)
+- Download the index gnomad_ms.fully_annotated.vcf.gz.csi
 - Download the app.py script
 
 ## Usage
