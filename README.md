@@ -2,8 +2,7 @@
 
 Compare your variant to gnomad and clinvar before applying your PP3 criteria (or discarding it):
 
-<img width="753" height="819" alt="image" src="https://github.com/user-attachments/assets/18dc5712-1f3c-4331-8ff2-4baf88b5e5e2" />
-
+<img width="645" height="933" alt="image" src="https://github.com/user-attachments/assets/5922933c-998c-45f4-b976-744a84acd988" />
 
 
 
