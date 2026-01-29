@@ -21,7 +21,12 @@ Download the `gene_coord.csv.gz` (available in github files)
 Download the `app.py` script
 
 ## Usage
-- Replace the `/path/to/files` in the `app.py` (at the top of the code)
+- Adapt the 3 file paths in the `app.py` (at the top of the code)
+```
+VCF_FILE = "/path/to/gnomad_ms.fully_annotated.vcf.gz"
+CLINVAR_VCF = "/path/to/clinvar_plp_ms.fully_annotated.vcf.gz"
+GENE_COORD = "/path/to/gene_coord.csv.gz"
+```
 - Replace the gene and variant by your gene and your variant
 ```
 TARGET_GENE = "SCN1A"
