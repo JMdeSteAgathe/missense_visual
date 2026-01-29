@@ -8,7 +8,7 @@ Compare your variant to gnomad and clinvar before applying your PP3 criteria (or
 
 
 
-Currently, only `REVEL`, `AlphaMissense` and `CADDv1.7` are available. `MISTIC`, `MPC2` and `popEVE` are displayed for gnomad and clinvar, but not for custom (not available in ensembl [VEP api])(https://rest.ensembl.org/documentation/info/vep_hgvs_post).
+Currently, only `REVEL`, `AlphaMissense` and `CADDv1.7` are available. `MISTIC`, `MPC2` and `popEVE` are displayed for gnomad and clinvar, but not for custom (not available in ensembl [VEP api](https://rest.ensembl.org/documentation/info/vep_hgvs_post)).
 
 ## Setup
 
@@ -16,7 +16,7 @@ Download the 2 preannotated vcf with their index
 -  `clinvar_plp_ms.fully_annotated.vcf.gz` and `clinvar_plp_ms.fully_annotated.vcf.gz.csi` (available in github rep)
 -  `gnomad_ms.fully_annotated.vcf.gz` (1.3G) drive link here: [https://1drv.ms/u/c/0c297c45bbbdee7e/IQDlnodDmGNTRq2kMQJ0AE0PAdXzhM5P4HHX8HtbZmxx8hc?e=TBADcU](https://1drv.ms/u/c/0c297c45bbbdee7e/IQDlnodDmGNTRq2kMQJ0AE0PAdXzhM5P4HHX8HtbZmxx8hc?e=TBADcU) (the index `gnomad_ms.fully_annotated.vcf.gz.csi` is available in the github files)
 
-Download the `gene_coord.csv.gz` (available in github files
+Download the `gene_coord.csv.gz` (available in github files)
 
 Download the `app.py` script
 
