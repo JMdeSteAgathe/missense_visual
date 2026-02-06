@@ -8,13 +8,13 @@ Compare your variant to gnomad and clinvar before applying your PP3 criteria (or
 
 
 
-Currently, only `REVEL`, `AlphaMissense` and `CADDv1.7` are available. `MISTIC`, `MPC2` and `popEVE` are displayed for gnomad and clinvar, but not for custom (not available in ensembl [VEP api](https://rest.ensembl.org/documentation/info/vep_hgvs_post)).
+Currently, some scores (e.g. `MISTIC`, `MPC2`, `popEVE`) are displayed for gnomad and clinvar, but not for custom (not available in ensembl [VEP api](https://rest.ensembl.org/documentation/info/vep_hgvs_post)).
 
 ## Setup
 
 Download the 2 preannotated vcf with their index
 -  `clinvar_plp_ms.fully_annotated.vcf.gz` and `clinvar_plp_ms.fully_annotated.vcf.gz.csi` (available in github rep)
--  `gnomad_ms.fully_annotated.vcf.gz` (1.3G) drive link here: [https://1drv.ms/u/c/0c297c45bbbdee7e/IQDlnodDmGNTRq2kMQJ0AE0PAdXzhM5P4HHX8HtbZmxx8hc?e=TBADcU](https://1drv.ms/u/c/0c297c45bbbdee7e/IQDlnodDmGNTRq2kMQJ0AE0PAdXzhM5P4HHX8HtbZmxx8hc?e=TBADcU) (the index `gnomad_ms.fully_annotated.vcf.gz.csi` is available in the github files)
+-  `gnomad.PASS.BCSQ.ms.fully_annotated.vcf.gz` and its index (1.3G) drive link here: [https://1drv.ms/f/c/b3a192f976546575/IgBImZb8Qas0RKhQW9K5C7ldARwgVYtpQCSjqzl_CU_zE-A?e=Vsonz4](https://1drv.ms/f/c/b3a192f976546575/IgBImZb8Qas0RKhQW9K5C7ldARwgVYtpQCSjqzl_CU_zE-A?e=Vsonz4) (the index `gnomad_ms.fully_annotated.vcf.gz.csi` is available in the github files)
 
 Download the `gene_coord.csv.gz` (available in github files)
 
@@ -23,7 +23,7 @@ Download the `app.py` script
 ## Usage
 - Adapt the 3 file paths in the `app.py` (at the top of the code)
 ```
-VCF_FILE = "/path/to/gnomad_ms.fully_annotated.vcf.gz"
+VCF_FILE = "/path/to/gnomad.PASS.BCSQ.ms.fully_annotated.vcf.gz"
 CLINVAR_VCF = "/path/to/clinvar_plp_ms.fully_annotated.vcf.gz"
 GENE_COORD = "/path/to/gene_coord.csv.gz"
 ```
