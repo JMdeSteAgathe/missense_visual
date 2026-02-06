@@ -26,9 +26,15 @@ conv_chroms = [str(i) for i in range(1, 23)] + ['X', 'Y', 'MT']
 # Now filter only those rows that have a non conventional chromosome
 gene_coord = gene_coord[gene_coord['Chromosome/scaffold name'].isin(conv_chroms)]
 
+import requests
+import sys
+import json
+
+TARGET_GENE = "kdm2b".upper()
+variant = "NM_032590.5:c.1638G>T"
 server = "https://rest.ensembl.org"
 # Added fields parameter to ensure we get gene_symbol for all transcripts
-ext = "/vep/human/hgvs/" + variant + "?mane=1&canonical=1&REVEL=1&AlphaMissense=1&CADD=1&vcf_string=1&fields=transcript_consequences"
+ext = "/vep/human/hgvs/" + variant + "?mane=1&canonical=1&REVEL=1&AlphaMissense=1&CADD=1&vcf_string=1&fields=transcript_consequences&dbNSFP=BayesDel_noAF_score,VARITY_R_LOO_score,gnomAD_exomes_nhomalt"
 
 r = requests.get(server + ext, headers={"Content-Type": "application/json"})
 
@@ -89,23 +95,72 @@ if bcsq_entries:
 
 # b) Add other scores using smarter logic
 
+def parse_score_string(score_value):
+    """
+    Parses a score that might be a comma-separated string with multiple values.
+    Returns the maximum numerical value, or the original value if it's not a string.
+    
+    Examples:
+    - '.,0.083826095,.,.,.,.,.,.' -> 0.083826095
+    - '0.5' -> 0.5
+    - 0.5 -> 0.5
+    """
+    if not isinstance(score_value, str):
+        return score_value
+    
+    # Check if it contains commas (multiple values)
+    if ',' not in score_value:
+        try:
+            return float(score_value)
+        except (ValueError, TypeError):
+            return score_value
+    
+    # Parse comma-separated values and find the maximum
+    values = score_value.split(',')
+    numeric_values = []
+    
+    for val in values:
+        val = val.strip()
+        if val and val != '.':
+            try:
+                numeric_values.append(float(val))
+            except (ValueError, TypeError):
+                continue
+    
+    if numeric_values:
+        return max(numeric_values)
+    
+    return None
+
 def get_best_score(transcript_consequences, score_key, target_gene):
     """
     Finds the best score from a list of transcript consequences.
     
     Logic:
     1. Collect all available scores for the given score_key.
-    2. If there's only one unique score value, return it.
-    3. If there are multiple, return the one associated with the target_gene.
-    4. If none are found, or none match the target gene in a conflict, return None.
+    2. Parse scores that might be comma-separated strings.
+    3. If there's only one unique score value, return it.
+    4. If there are multiple, return the one associated with the target_gene.
+    5. If none are found, or none match the target gene in a conflict, return None.
     """
     scores_with_genes = []
     for tc in transcript_consequences:
         if score_key in tc:
-            scores_with_genes.append({
-                'gene': tc.get('gene_symbol'),
-                'score': tc[score_key]
-            })
+            raw_score = tc[score_key]
+            
+            # Special handling for scores that might be comma-separated strings
+            if score_key in ['varity_r_loo_score', 'bayesdel_noaf_score']:
+                parsed_score = parse_score_string(raw_score)
+                if parsed_score is not None:
+                    scores_with_genes.append({
+                        'gene': tc.get('gene_symbol'),
+                        'score': parsed_score
+                    })
+            else:
+                scores_with_genes.append({
+                    'gene': tc.get('gene_symbol'),
+                    'score': raw_score
+                })
 
     if not scores_with_genes:
         return None
@@ -139,12 +194,18 @@ if am_score is not None:
     info_parts.append(f"am_pathogenicity={am_score.get('am_pathogenicity', '.')}")
     info_parts.append(f"am_class={am_score.get('am_class', '.')}")
 
+bayesdel_score = get_best_score(all_tcs, 'bayesdel_noaf_score', TARGET_GENE)
+if bayesdel_score is not None:
+    info_parts.append(f"BayesDel_nsfp33a_noAF={bayesdel_score}")
+
+varity_score = get_best_score(all_tcs, 'varity_r_loo_score', TARGET_GENE)
+if varity_score is not None:
+    info_parts.append(f"VARITY_R_LOO={varity_score}")
+
 info_string = ";".join(info_parts)
 
 # --- 3. Assemble Final VCF Row ---
 vcf_row = "\t".join(map(str, [chrom, pos, rsid, ref, alt, qual, filter_col, info_string]))
-
-VCF_ROW_STRING = vcf_row
 vcf_string = data['vcf_string'] # define vcf-string, to be displayed in the legend
 
 # get the date of the clinvar vcf file, as written in the header, to be displayed in the legend
@@ -155,8 +216,9 @@ with gzip.open(CLINVAR_VCF, 'rt') as f:
             clinvar_date = line.strip().split('=')[1]
             break
 
-# Initialize the Dash app
-app = dash.Dash(__name__)
+# Initialize the Dash app with Bootstrap theme for modal support
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], 
+                suppress_callback_exceptions=True)
 
 def get_gene_coordinates(gene_coord_df, gene_symbol):
     """
@@ -201,9 +263,11 @@ def parse_variant_record(variant, gene_symbol, source_type="vcf"):
     if source_type == "vcf":  # From cyvcf2
         info_dict = variant.INFO
         chrom, pos, ref, alt = variant.CHROM, variant.POS, variant.REF, ','.join(variant.ALT)
+        variant_id = str(variant.ID) if variant.ID else None
     else:  # From our custom row parser
         info_dict = variant  # The dict itself is the info
         chrom, pos, ref, alt = variant['chrom'], variant['pos'], variant['ref'], variant['alt']
+        variant_id = variant.get('id')
     
     bcsq_string = info_dict.get('BCSQ')
     if bcsq_string is None:
@@ -227,20 +291,27 @@ def parse_variant_record(variant, gene_symbol, source_type="vcf"):
         
         variant_data = {
             'chrom': chrom, 'pos': pos, 'ref': ref, 'alt': alt,
+            'variant_id': variant_id,
             'gene': entry_gene, 'transcript': entry_transcript, 'biotype': biotype,
             'aa_position': aa_position, 'aa_change': aa_change,
             'AC_joint': info_dict.get('AC_joint', 0),
             'AC_genomes': info_dict.get('AC_genomes', 0),
             'nhomalt_joint': info_dict.get('nhomalt_joint', 0),
             'nhomalt_genomes': info_dict.get('nhomalt_genomes', 0),
-            'REVEL': info_dict.get('REVEL'),
-            'am_pathogenicity': info_dict.get('am_pathogenicity'),
-            'cadd_v1.7': info_dict.get('cadd_v1.7'),
-            'MPC': info_dict.get('MPC'),
-            # === NEW SCORES ADDED ===
-            'MISTIC_score': info_dict.get('MISTIC_score'),
-            'MISTIC_pred': info_dict.get('MISTIC_pred'),
-            'popEVE': info_dict.get('popEVE')
+            # Convert all scores to float
+            'REVEL': to_float(info_dict.get('REVEL')),
+            'am_pathogenicity': to_float(info_dict.get('am_pathogenicity')),
+            'cadd_v1.7': to_float(info_dict.get('cadd_v1.7')),
+            'MPC': to_float(info_dict.get('MPC')),
+            'MISTIC_score': to_float(info_dict.get('MISTIC_score')),
+            'MISTIC_pred': info_dict.get('MISTIC_pred'),  # Keep as string
+            'popEVE': to_float(info_dict.get('popEVE')),
+            'BayesDel_nsfp33a_noAF': to_float(info_dict.get('BayesDel_nsfp33a_noAF')),
+            'VARITY_R_LOO': to_float(info_dict.get('VARITY_R_LOO')),
+            # === CLINVAR SPECIFIC FIELDS ===
+            'CLNDN': info_dict.get('CLNDN'),
+            'CLNREVSTAT': info_dict.get('CLNREVSTAT'),
+            'CLNSIG': info_dict.get('CLNSIG')
         }
         parsed_variants.append(variant_data)
     
@@ -276,7 +347,7 @@ def parse_vcf_row(vcf_row_string, gene_symbol):
             print("Warning: Custom VCF row is malformed. Skipping.")
             return pd.DataFrame()
         
-        chrom, pos, _, ref, alt, _, _, info_str = fields[0:8]
+        chrom, pos, variant_id, ref, alt, _, _, info_str = fields[0:8]
         info_dict = parse_info_field(info_str)
         
         # Add required fields for the parser
@@ -284,6 +355,7 @@ def parse_vcf_row(vcf_row_string, gene_symbol):
         info_dict['pos'] = int(pos)
         info_dict['ref'] = ref
         info_dict['alt'] = alt
+        info_dict['id'] = variant_id if variant_id != '.' else None
         
         parsed_variants = parse_variant_record(info_dict, gene_symbol, source_type="dict")
         print(f"Found {len(parsed_variants)} missense variants in custom row.")
@@ -297,6 +369,7 @@ def parse_vcf_row(vcf_row_string, gene_symbol):
 try:
     print(f"Loading gnomAD variants from {VCF_FILE}...")
     GNOMAD_DATA = parse_gene_variants_region(VCF_FILE, gene_coord, TARGET_GENE)
+    GNOMAD_DATA['source'] = 'gnomAD'
     print(f"Loaded {len(GNOMAD_DATA)} gnomAD {TARGET_GENE} variants")
 except FileNotFoundError:
     print(f"ERROR: gnomAD VCF file not found at '{VCF_FILE}'. App cannot start.")
@@ -309,6 +382,7 @@ except Exception as e:
 try:
     print(f"Loading ClinVar variants from {CLINVAR_VCF}...")
     CLINVAR_DATA = parse_gene_variants_region(CLINVAR_VCF, gene_coord, TARGET_GENE)
+    CLINVAR_DATA['source'] = 'ClinVar'
     print(f"Loaded {len(CLINVAR_DATA)} ClinVar {TARGET_GENE} variants")
 except FileNotFoundError:
     print(f"INFO: ClinVar VCF file not found at '{CLINVAR_VCF}'. Skipping.")
@@ -320,6 +394,7 @@ except Exception as e:
 # Parse custom variant row (optional, always displayed when available)
 try:
     CUSTOM_VARIANT_DATA = parse_vcf_row(VCF_ROW_STRING, TARGET_GENE)
+    CUSTOM_VARIANT_DATA['source'] = 'Custom'
     if not CUSTOM_VARIANT_DATA.empty:
         print(f"Loaded custom variant for {TARGET_GENE}")
 except Exception as e:
@@ -358,9 +433,11 @@ app.layout = html.Div([
                     {'label': 'AlphaMissense', 'value': 'am_pathogenicity'},
                     {'label': 'CADD v1.7', 'value': 'cadd_v1.7'},
                     {'label': 'MPC2', 'value': 'MPC'},
-                    # === NEW SCORES ADDED TO DROPDOWN ===
                     {'label': 'MISTIC', 'value': 'MISTIC_score'},
-                    {'label': 'popEVE', 'value': 'popEVE'}
+                    {'label': 'popEVE', 'value': 'popEVE'},
+                    # === NEW PREDICTORS ADDED TO DROPDOWN ===
+                    {'label': 'BayesDel noAF', 'value': 'BayesDel_nsfp33a_noAF'},
+                    {'label': 'VARITY R LOO', 'value': 'VARITY_R_LOO'}
                 ],
                 value='REVEL',
                 style={'width': '100%'}
@@ -404,6 +481,37 @@ app.layout = html.Div([
     
     dcc.Graph(id='pathogenicity-plot', style={'height': '600px'}),
     
+    # Hidden div to store clicked point data
+    html.Div(id='clicked-point-data', style={'display': 'none'}),
+    
+    # Hidden div to store the variant string for copying
+    dcc.Store(id='variant-to-copy', storage_type='memory'),
+    
+    # Copy notification toast
+    dbc.Toast(
+        "Variant copied to clipboard!",
+        id="copy-toast",
+        header="Success",
+        is_open=False,
+        dismissable=True,
+        duration=2000,
+        icon="success",
+        style={"position": "fixed", "top": 66, "right": 10, "width": 350, "zIndex": 9999},
+    ),
+    
+    # Modal for variant details
+    dbc.Modal([
+        dbc.ModalHeader(dbc.ModalTitle(id='modal-title')),
+        dbc.ModalBody(id='modal-body'),
+        dbc.ModalFooter(
+            dbc.Button("Close", id="close-modal", className="ms-auto", n_clicks=0)
+        ),
+    ],
+    id="variant-modal",
+    is_open=False,
+    size="lg"
+    ),
+    
     html.Div([
         html.H3("Legend:", style={'marginTop': 5}),
         html.Ul([
@@ -426,11 +534,8 @@ def create_hover_text(df, score_column):
         score_val = row.get(score_column)
         score_str = f"{float(score_val):.3f}" if pd.notna(score_val) else 'N/A'
         
-        # === ENHANCED HOVER TEXT FOR NEW SCORES ===
         text = (
             f"<b>Change:</b> {row.get('aa_change', 'N/A')}<br>"
-            f"<b>Variant:</b> {row.get('chrom', '')}:{row.get('pos', '')} "
-            f"{row.get('ref', '')}>{row.get('alt', '')}<br>"
             f"<b>{score_column}:</b> {score_str}<br>"
         )
         
@@ -438,11 +543,16 @@ def create_hover_text(df, score_column):
         if 'MISTIC_pred' in row and pd.notna(row.get('MISTIC_pred')) and score_column == 'MISTIC_score':
             text += f"<b>MISTIC_pred:</b> {row['MISTIC_pred']}<br>"
         
+        # Add CLNREVSTAT for ClinVar variants
+        if row.get('source') == 'ClinVar' and pd.notna(row.get('CLNREVSTAT')):
+            text += f"<b>Review Status:</b> {row['CLNREVSTAT']}<br>"
+        
         text += (
             f"<b>AC_genomes:</b> {row.get('AC_genomes', 0)}<br>"
             f"<b>AC_joint:</b> {row.get('AC_joint', 0)}<br>"
             f"<b>nhomalt_genomes:</b> {row.get('nhomalt_genomes', 0)}<br>"
-            f"<b>nhomalt_joint:</b> {row.get('nhomalt_joint', 0)}"
+            f"<b>nhomalt_joint:</b> {row.get('nhomalt_joint', 0)}<br>"
+            "<b><i>Click for more details</i></b>"
         )
         hover_text.append(text)
     return hover_text
@@ -463,6 +573,9 @@ def update_plot(transcript, score, threshold_field, threshold_value):
     fig = go.Figure()
     info_parts = []
     
+    # Store all data for click events
+    all_plot_data = pd.DataFrame()
+    
     # Trace 1: gnomAD data (filtered dynamically by user)
     try:
         # Convert threshold_value to numeric, default to 0 if None
@@ -482,6 +595,7 @@ def update_plot(transcript, score, threshold_field, threshold_value):
         
         if not gnomad_filtered.empty:
             gnomad_filtered = gnomad_filtered.sort_values('aa_position')
+            all_plot_data = pd.concat([all_plot_data, gnomad_filtered])
             
             # Create color scale based on threshold field
             color_values = gnomad_filtered[threshold_field].astype(float).replace(0, 1e-9)
@@ -492,8 +606,9 @@ def update_plot(transcript, score, threshold_field, threshold_value):
                 y=gnomad_filtered[score],
                 mode='markers',
                 name='gnomAD Variants',
+                customdata=gnomad_filtered.to_dict('records'),
                 marker=dict(
-                    size=8,
+                    size=10,
                     color=log_color,
                     colorscale='GnBu',
                     showscale=True,
@@ -512,8 +627,8 @@ def update_plot(transcript, score, threshold_field, threshold_value):
                 marker_colorbar=dict(
                     tickvals=np.log10([1, 10, 100, 1000, 10000]),
                     ticktext=['1', '10', '100', '1000', '10000']
+                )
             )
-    )
             info_parts.append(f"{len(gnomad_filtered)} gnomAD variants (filtered: {threshold_field} > {threshold_val})")
         else:
             info_parts.append(f"No gnomAD variants with {threshold_field} > {threshold_val}")
@@ -529,17 +644,19 @@ def update_plot(transcript, score, threshold_field, threshold_value):
                 (CLINVAR_DATA[score].notna())
             ].copy()
             
-            if not clinvar_filtered.empty:
+            if not clinvar_filtered .empty:
+                all_plot_data = pd.concat([all_plot_data, clinvar_filtered])
                 fig.add_trace(go.Scatter(
                     x=clinvar_filtered['aa_position'],
                     y=clinvar_filtered[score],
                     mode='markers',
                     name='ClinVar P/LP',
+                    customdata=clinvar_filtered.to_dict('records'),
                     marker=dict(
                         color='darkred', 
-                        size=7,
+                        size=10,
                         symbol='diamond',
-                        opacity=0.7 # make them a little transparent
+                        opacity=0.7
                     ),
                     text=create_hover_text(clinvar_filtered, score),
                     hoverinfo='text',
@@ -559,11 +676,13 @@ def update_plot(transcript, score, threshold_field, threshold_value):
             ].copy()
             
             if not custom_filtered.empty:
+                all_plot_data = pd.concat([all_plot_data, custom_filtered])
                 fig.add_trace(go.Scatter(
                     x=custom_filtered['aa_position'],
                     y=custom_filtered[score],
                     mode='markers',
                     name='Custom Variant',
+                    customdata=custom_filtered.to_dict('records'),
                     marker=dict(
                         color='gold',
                         size=16,
@@ -581,11 +700,6 @@ def update_plot(transcript, score, threshold_field, threshold_value):
     
     # Update layout
     fig.update_layout(
-#        title=dict(
-#            text=f"<b>{TARGET_GENE} Missense Variants - {transcript} | Score: {score}</b><br>",
-#            x=0.5,
-#            xanchor='center'
-#        ),
         xaxis=dict(
             title="<b>Amino Acid Position</b>",
             gridcolor='lightgray'
@@ -599,7 +713,6 @@ def update_plot(transcript, score, threshold_field, threshold_value):
         height=600,
         showlegend=False,
         font=dict(size=12),
-#        margin=dict(r=150)  # Extra margin for colorbar
     )
     
     fig.update_xaxes(showgrid=True, zeroline=False)
@@ -615,6 +728,186 @@ def update_plot(transcript, score, threshold_field, threshold_value):
         return fig, "⚠️ No variants found for this transcript with the selected score. Check if data is loaded correctly."
     
     return fig, info_text
+
+@app.callback(
+    Output("variant-modal", "is_open"),
+    Output("modal-title", "children"),
+    Output("modal-body", "children"),
+    Output("variant-to-copy", "data"),
+    Input("pathogenicity-plot", "clickData"),
+    Input("close-modal", "n_clicks"),
+    State("variant-modal", "is_open"),
+    State('score-dropdown', 'value'),
+)
+def toggle_modal(clickData, n_close, is_open, current_score):
+    ctx = callback_context
+    if not ctx.triggered:
+        return False, "", "", ""
+    
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    
+    if trigger_id == "pathogenicity-plot" and clickData:
+        # Get the clicked point's data
+        point_data = clickData['points'][0].get('customdata', {})
+        
+        if not point_data:
+            return False, "", "", ""
+        
+        # Build VCF string
+        vcf_string = f"{point_data.get('chrom', '')}-{point_data.get('pos', '')}-{point_data.get('ref', '')}-{point_data.get('alt', '')}"
+        
+        # Build URL based on source
+        url = ""
+        if point_data.get('source') == 'ClinVar' and point_data.get('variant_id'):
+            url = f"https://www.ncbi.nlm.nih.gov/clinvar/variation/{point_data['variant_id']}/"
+        elif point_data.get('source') == 'gnomAD':
+            url = f"https://gnomad.broadinstitute.org/variant/{vcf_string}?dataset=gnomad_r4"
+        
+        # Build modal title
+        modal_title = f"Variant Details: {point_data.get('aa_change', 'N/A')}"
+        
+        # Create modal body with all information
+        modal_content = [
+            html.Div([
+                html.H5("Variant Information"),
+                html.Hr(),
+                html.Div([
+                    dbc.Alert([
+                        dbc.Row([
+                            dbc.Col([
+                                html.Strong("hg38: "),
+                                html.Span(vcf_string, style={'fontFamily': 'monospace'})
+                            ], width="auto", className="align-self-center"),
+                            dbc.Col([
+                                dbc.Button(
+                                    "📋 Copy Variant",
+                                    id="copy-variant-btn",
+                                    color="secondary",
+                                    size="sm",
+                                    className="ms-2",
+                                    n_clicks=0,
+                                    style={'backgroundColor': '#0D6EFD', 'borderColor': '#0D6EFD',}
+                                )
+                            ], width="auto", className="align-self-center")
+                        ], className="g-2 align-items-center")  # g-2 for small gap
+                    ], color="light"),
+                ]),
+                # Add hyperlink
+                html.Div([              
+                dbc.Button(
+                    f"View in {point_data.get('source', 'Database')} →",
+                    href=url,
+                    target="_blank",
+                    color="primary",
+                    className="w-100"
+                )
+                ]),
+                html.Br(),
+                html.P([html.Strong("Gene: "), point_data.get('gene', 'N/A')]),
+                html.P([html.Strong("Transcript: "), point_data.get('transcript', 'N/A')]),
+                html.P([html.Strong("AA Change: "), point_data.get('aa_change', 'N/A')]),
+                html.P([html.Strong("Source: "), point_data.get('source', 'N/A')]),
+            ]),
+            html.Hr(),
+            html.H5("Pathogenicity Scores"),
+            html.Hr(),
+        ]
+        # Add all available scores
+        scores_to_show = ['REVEL', 'am_pathogenicity', 'cadd_v1.7', 'MPC', 
+                         'MISTIC_score', 'popEVE', 'BayesDel_nsfp33a_noAF', 'VARITY_R_LOO']
+        
+        for score in scores_to_show:
+            if score in point_data and pd.notna(point_data.get(score)):
+                score_val = float(point_data[score])
+                score_label = score
+                if score == current_score:
+                    modal_content.append(
+                        html.P([
+                            html.Strong(f"{score_label}: "), 
+                            html.Span(f"{score_val:.3f}", 
+                                    style={'backgroundColor': '#ffc107', 'padding': '2px 6px', 
+                                          'borderRadius': '4px', 'fontWeight': 'bold'}),
+                            html.Span(" (current)", style={'fontStyle': 'italic', 'marginLeft': '5px'})
+                        ])
+                    )
+                else:
+                    modal_content.append(
+                        html.P([html.Strong(f"{score_label}: "), f"{score_val:.3f}"])
+                    )
+        
+        # Add ClinVar specific information
+        if point_data.get('source') == 'ClinVar':
+            if pd.notna(point_data.get('CLNDN')):
+                modal_content.append(html.Hr())
+                modal_content.append(html.H5("ClinVar Information"))
+                modal_content.append(html.Hr())
+                modal_content.append(
+                    html.P([html.Strong("Disease: "), point_data['CLNDN'].replace('_', ' ')])
+                )
+            if pd.notna(point_data.get('CLNREVSTAT')):
+                modal_content.append(
+                    html.P([html.Strong("Review Status: "), point_data['CLNREVSTAT'].replace('_', ' ')])
+                )
+            if pd.notna(point_data.get('CLNSIG')):
+                modal_content.append(
+                    html.P([html.Strong("Clinical Significance: "), point_data['CLNSIG'].replace('_', ' ')])
+                )
+        
+        # Add gnomAD counts
+        if point_data.get('source') == 'gnomAD' or point_data.get('source') == 'Custom':
+            modal_content.append(html.Hr())
+            modal_content.append(html.H5("Population Data"))
+            modal_content.append(html.Hr())
+            modal_content.append(
+                html.P([html.Strong("AC Genomes: "), str(point_data.get('AC_genomes', 0))])
+            )
+            modal_content.append(
+                html.P([html.Strong("AC Joint: "), str(point_data.get('AC_joint', 0))])
+            )
+            modal_content.append(
+                html.P([html.Strong("Homozygous Genomes: "), str(point_data.get('nhomalt_genomes', 0))])
+            )
+            modal_content.append(
+                html.P([html.Strong("Homozygous Joint: "), str(point_data.get('nhomalt_joint', 0))])
+            )
+        
+        return True, modal_title, modal_content, vcf_string
+    
+    elif trigger_id == "close-modal":
+        return False, "", "", ""
+    
+    return is_open, "", "", ""
+
+# Callback to handle copying variant
+@app.callback(
+    Output("copy-toast", "is_open"),
+    Input("copy-variant-btn", "n_clicks"),
+    State("variant-to-copy", "data"),
+    prevent_initial_call=True
+)
+def copy_variant(n_clicks, variant_string):
+    if n_clicks and variant_string:
+        # Note: Actually copying to clipboard requires JavaScript
+        # This callback just shows the notification
+        # The actual copying is handled by the clientside callback below
+        return True
+    return False
+
+# Clientside callback to actually copy to clipboard
+app.clientside_callback(
+    """
+    function(n_clicks, variant_string) {
+        if (n_clicks > 0 && variant_string) {
+            navigator.clipboard.writeText(variant_string);
+        }
+        return window.dash_clientside.no_update;
+    }
+    """,
+    Output("copy-variant-btn", "n_clicks_timestamp"),  # Dummy output
+    Input("copy-variant-btn", "n_clicks"),
+    State("variant-to-copy", "data"),
+    prevent_initial_call=True
+)
 
 if __name__ == '__main__':
     app.run(debug=True, port=8050)
