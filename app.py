@@ -73,7 +73,7 @@ for tc in data.get('transcript_consequences', []):
     transcript_id = tc.get('transcript_id', '.')
     biotype = tc.get('biotype', '.')
 
-    is_protein_altering = 'amino_acids' in tc
+    is_protein_altering = 'amino_acids' in tc and '/' in tc.get('amino_acids', '')
 
     for term in tc.get('consequence_terms', []):
         base_entry = f"{term}|{gene}|{transcript_id}|{biotype}"
